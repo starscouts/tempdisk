@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>File usage tracking</title>
+
+    <script>
+
+        const { ipcRenderer, app } = require('electron');
+        const fs = require('fs');
+
+        window.list = [];
+
+        function fillList(dir) {
+            for (let file of fs.readdirSync(dir)) {
+                list.push(dir + "/" + file);
+
+                try {
+                    fs.accessSync(dir + "/" + file, fs.constants.R_OK);
+
+                    if (fs.lstatSync(dir + "/" + file).isDirectory()) {
+                        fillList(dir + "/" + file);
+                    }
+                } catch (e) {}
+            }
+        }
+
+        ipcRenderer.on('config', (event, data) => {
+            window.config = JSON.parse(data);
+        })
+
+        ipcRenderer.on('watchers', (event, data) => {
+            window.data = JSON.parse(data);
+
+            window.list = [];
+            fillList(window.config.directory);
+            window.list = [...new Set([...window.list, ...Object.keys(window.data.fileWatchers), ...window.data.fileWatchersPurgeable])].sort((a, b) => {
+                return a.localeCompare(b);
+            });
+
+            let dom = "";
+
+            for (let item of list) {
+                dom += `
+                    <div class="list-item ${(item.substring(window.config.directory.length + 1).includes("/.") || item.substring(window.config.directory.length + 1).startsWith(".")) && !item.substring(window.config.directory.length + 1).startsWith(".Trashes/") && !item.substring(window.config.directory.length + 1).startsWith(".Trash/") && item.substring(window.config.directory.length + 1).startsWith(".Trash-") ? "list-item-system" : ""} ${(item.substring(window.config.directory.length + 1).includes("/.") || item.substring(window.config.directory.length + 1).startsWith(".")) && (item.substring(window.config.directory.length + 1).startsWith(".Trashes/") || item.substring(window.config.directory.length + 1).startsWith(".Trash/") || item.substring(window.config.directory.length + 1).startsWith(".Trash-")) ? "list-item-trash" : ""} ${window.data.fileWatchersFailed.includes(item) ? "list-item-failed" : !Object.keys(window.data.fileWatchers).includes(item) ? "list-item-untracked" : ""} ${window.data.fileWatchersPurgeable.includes(item) ? "list-item-purgeable" : ""}">
+                        <div>${item.substring(window.config.directory.length + 1)}</div>
+                        <div style="opacity: .5;">
+                            ${(item.substring(window.config.directory.length + 1).includes("/.") || item.substring(window.config.directory.length + 1).startsWith(".")) && !item.substring(window.config.directory.length + 1).startsWith(".Trashes/") && !item.substring(window.config.directory.length + 1).startsWith(".Trash/") && !item.substring(window.config.directory.length + 1).startsWith(".Trash-") ? "<span style='padding: 2px 5px;border-radius:5px;background:rgba(0, 0, 0, .3);'>System</span>" : ""}
+                            ${(item.substring(window.config.directory.length + 1).includes("/.") || item.substring(window.config.directory.length + 1).startsWith(".")) && (item.substring(window.config.directory.length + 1).startsWith(".Trashes/") || item.substring(window.config.directory.length + 1).startsWith(".Trash/") || item.substring(window.config.directory.length + 1).startsWith(".Trash-")) ? "<span style='padding: 2px 5px;border-radius:5px;background:rgba(0, 0, 0, .3);'>Trash</span>" : ""}
+                            ${window.data.fileWatchersFailed.includes(item) ? "<span style='padding: 2px 5px;border-radius:5px;background:rgba(0, 0, 0, .3);'>Failed</span>" : !Object.keys(window.data.fileWatchers).includes(item) ? "<span style='padding: 2px 5px;border-radius:5px;background:rgba(0, 0, 0, .3);'>Untracked</span>" : ""}
+                            ${window.data.fileWatchersPurgeable.includes(item) ? "<span style='padding: 2px 5px;border-radius:5px;background:rgba(0, 0, 0, .3);'>Purgeable</span>" : ""}
+                        </div>
+                </div>
+                `;
+            }
+
+            document.getElementById("list").innerHTML = dom;
+        })
+
+    </script>
+
+    <style>
+        * {
+            cursor: default;
+        }
+
+        body {
+            background: #333;
+            margin: 0;
+            font-size: 14px;
+            color: white;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .list-item:hover {
+            background: rgba(0, 0, 0, .1);
+        }
+
+        .list-item {
+            border-top: 1px solid rgba(0, 0, 0, .25);
+            padding: 5px 10px;
+            display: grid;
+            grid-template-columns: 1fr max-content;
+            grid-gap: 10px;
+        }
+
+        .list-item > div {
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .list-item.list-item-untracked {
+            background: rgba(213, 59, 59, 0.1);
+        }
+
+        .list-item.list-item-untracked:hover {
+            background: rgba(213, 59, 59, 0.25);
+        }
+
+        .list-item.list-item-purgeable {
+            background: rgba(213, 187, 59, 0.1);
+        }
+
+        .list-item.list-item-purgeable:hover {
+            background: rgba(213, 187, 59, 0.25);
+        }
+
+        .list-item.list-item-system {
+            background: rgba(59, 213, 190, 0.1);
+        }
+
+        .list-item.list-item-system:hover {
+            background: rgba(59, 213, 190, 0.25);
+        }
+
+        .list-item.list-item-trash {
+            background: rgba(110, 59, 213, 0.1);
+        }
+
+        .list-item.list-item-trash:hover {
+            background: rgba(110, 59, 213, 0.25);
+        }
+
+        .list-item.list-item-failed {
+            background: rgba(59, 213, 95, 0.1);
+        }
+
+        .list-item.list-item-failed:hover {
+            background: rgba(59, 213, 95, 0.25);
+        }
+    </style>
+</head>
+<body>
+    <div id="list"></div>
+</body>
+</html>
